@@ -3,30 +3,31 @@ use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool, FromRow, Row, Error::Da
 
 #[derive(Debug, FromRow, Clone)]
 pub struct Snippet {
-  id: i32,
+  snippet_id: i32,
   text: String,
-  group: String,
+  category: String,
 }
 
-pub enum Fields {
-  Priority,
-  Name,
-  Desc,
-  Dir,
-  Special,
-}
-
-pub enum Special {
-  Mark,
-  Hook,
+#[derive(Debug, FromRow, Clone)]
+pub struct Categories {
+  id: i32,
+  category_name: String,
 }
 
 pub async fn init(db: &SqlitePool) -> Result<()> {
   sqlx::query(r#"
+    create table if not exists Categories (
+      category_id integer primary key autoincrement,
+      category_name text
+      );
+  "#).execute(db)
+    .await?;
+
+  sqlx::query(r#"
     create table if not exists Snippets (
-      id integer primary key autoincrement,
+      snippet_id integer primary key autoincrement,
       snippet text not null,
-      category text 
+      category_id integer 
     );
   "#).execute(db)
     .await?;

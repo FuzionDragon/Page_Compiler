@@ -1,10 +1,12 @@
+use rust_stemmers::{ Algorithm, Stemmer };
 use stop_words::{ get, LANGUAGE };
-use human_regex::{ exactly, one_or_more, or, punctuation, whitespace, word_boundary };
+use human_regex::{ one_or_more, punctuation };
 
-pub fn preprocess(data: Vec<String>) -> Vec<String> {
+pub fn preprocess(data: Vec<String>) -> Vec<Vec<String>> {
   println!("{:?}", data.clone());
   let mut processed = Vec::new();
   let stop_words = get(LANGUAGE::English);
+  let en_stemmer = Stemmer::create(Algorithm::English);
 
   for text in data {
     let lowercase_text = text.to_ascii_lowercase();
@@ -13,11 +15,11 @@ pub fn preprocess(data: Vec<String>) -> Vec<String> {
       .to_regex()
       .replace_all(&lowercase_text, "");
 
-    let stop_words_regex = word_boundary() + exactly(1, or(&stop_words)) + word_boundary() + one_or_more(whitespace());
-    let clean_text = stop_words_regex
-      .to_regex()
-      .replace_all(&no_punctuation_text, "")
-      .to_string();
+    let clean_text: Vec<String> = no_punctuation_text
+      .split_whitespace()
+      .filter(|word| !stop_words.contains(&word.to_string()))
+      .map(|word| en_stemmer.stem(word).to_string())
+      .collect();
 
     processed.push(clean_text);
   }
