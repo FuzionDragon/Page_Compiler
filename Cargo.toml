@@ -1,0 +1,18 @@
+[package]
+name = "page_compiler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+async-std = { version = "1.13.1", features = [ "attributes" ] }
+human_regex = "0.3.0"
+linfa = "0.7.1"
+linfa-clustering = "0.7.1"
+ndarray = "0.16.1"
+rust-stemmers = "1.2.0"
+sqlx = { version = "0.8.6", features = [ "sqlite", "runtime-async-std" ] }
+stop-words = "0.8.1"
+tfidf = "0.3.0"
+thiserror = "2.0.12"
+whatlang = "0.16.4"
