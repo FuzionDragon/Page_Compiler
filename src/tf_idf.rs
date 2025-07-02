@@ -15,20 +15,6 @@ pub fn all_document_tf_idf(term: String, corpus: Vec<Vec<String>>) -> HashMap<us
   result
 }
 
-pub fn every_term_tf_idf(document: Vec<String>, corpus: Vec<Vec<String>>) -> HashMap<String, f32> {
-  let mut result: HashMap<String, f32> = HashMap::new();
-  let unique_terms = document
-    .clone()
-    .into_iter()
-    .collect::<HashSet<_>>();
-
-  for term in unique_terms {
-    result.insert(term.clone(), tf_idf(term.clone(), document.clone(), corpus.clone()));
-  }
-
-  result
-}
-
 fn tf(search_term: String, document: Vec<String>) -> f32 {
   let mut search_term_count = 0.;
   let mut all_term_count = 0.;

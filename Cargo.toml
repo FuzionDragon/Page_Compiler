@@ -11,6 +11,7 @@ human_regex = "0.3.0"
 linfa = "0.7.1"
 linfa-clustering = "0.7.1"
 ndarray = "0.16.1"
+rake = "0.3.6"
 rust-stemmers = "1.2.0"
 sqlx = { version = "0.8.6", features = [ "sqlite", "runtime-async-std" ] }
 stop-words = "0.8.1"
