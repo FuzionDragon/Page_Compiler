@@ -1,5 +1,5 @@
 use anyhow::{ Ok, Result };
-use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool, FromRow, Row, Error::Database};
+use sqlx::{SqlitePool, FromRow, Row, Error::Database};
 
 #[derive(Debug, FromRow, Clone)]
 pub struct Snippet {
@@ -9,12 +9,26 @@ pub struct Snippet {
 }
 
 #[derive(Debug, FromRow, Clone)]
-pub struct Categories {
-  id: i32,
+pub struct Category {
+  catergory_id: i32,
   category_name: String,
 }
 
+#[derive(Debug, FromRow, Clone)]
+pub struct Term {
+  term_id: i32,
+  term: String,
+}
+
 pub async fn init(db: &SqlitePool) -> Result<()> {
+  sqlx::query(r#"
+    create table if not exists Terms (
+      term_id integer primary key autoincrement,
+      term text unique not null
+      );
+  "#).execute(db)
+    .await?;
+
   sqlx::query(r#"
     create table if not exists Categories (
       category_id integer primary key autoincrement,

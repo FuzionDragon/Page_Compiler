@@ -4,15 +4,40 @@ pub fn tf_idf(term: String, document: Vec<String>, corpus: Vec<Vec<String>>) -> 
   tf(term.clone(), document) * idf(term.clone(), corpus)
 }
 
-pub fn all_document_tf_idf(term: String, corpus: Vec<Vec<String>>) -> HashMap<usize, f32> {
-  let mut result: HashMap<usize, f32> = HashMap::new();
+pub fn tf_idf_vectorize(document: Vec<String>, corpus: Vec<Vec<String>>) -> Vec<f32> {
+  let mut vector: Vec<f32> = Vec::new();
+  let mut all_terms: HashSet<String> = HashSet::new();
 
-  for i in 0..corpus.len() {
-    let document = corpus[i].clone();
-    result.insert(i, tf_idf(term.clone(), document, corpus.clone()));
+  for document in corpus.clone() {
+    all_terms.extend(document);
   }
 
-  result
+  for term in all_terms {
+    vector.push(tf_idf(term.clone(), document.clone(), corpus.clone()));
+  }
+
+  vector
+}
+
+pub fn all_tf_idf_vectorize(corpus: Vec<Vec<String>>) -> HashMap<usize, Vec<f32>> {
+  let mut vectors: HashMap<usize, Vec<f32>> = HashMap::new();
+  let mut all_terms: HashSet<String> = HashSet::new();
+
+  for document in corpus.clone() {
+    all_terms.extend(document);
+  }
+
+  for i in 0..corpus.clone().len() {
+    let mut vector: Vec<f32> = Vec::new();
+
+    for term in all_terms.clone() {
+      vector.push(tf_idf(term.clone(), corpus[i].clone(), corpus.clone()));
+    }
+
+    vectors.insert(i, vector);
+  }
+
+  vectors
 }
 
 fn tf(search_term: String, document: Vec<String>) -> f32 {

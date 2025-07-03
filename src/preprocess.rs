@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rust_stemmers::{ Algorithm, Stemmer };
 use stop_words::{ get, LANGUAGE };
 use human_regex::{ one_or_more, punctuation };
@@ -46,4 +48,14 @@ pub fn rake_preprocess(data: Vec<String>) -> Vec<Vec<String>> {
   }
 
   processed
+}
+
+pub fn all_terms(corpus: Vec<Vec<String>>) -> HashSet<String> {
+  let mut all_terms: HashSet<String> = HashSet::new();
+
+  for document in corpus {
+    all_terms.extend(document);
+  }
+
+  all_terms
 }
