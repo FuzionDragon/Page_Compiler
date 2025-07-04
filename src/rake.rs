@@ -2,13 +2,6 @@ use std::collections::HashMap;
 
 use stop_words::{ get, LANGUAGE };
 
-// Needed functions:
-// - phrase compiler
-// - degree of word calculator (number of times they occur in a phrase as well as number of words
-// in their phrase)
-// - degree score calculator (degree of word / word frequency)
-// - phrase score calculator (all word scores in the phrases added together)
-
 pub fn rake(document: Vec<String>) -> Vec<(String, f32)> {
   let stop_words: Vec<String> = get(LANGUAGE::English);
   let phrases = phrases(document.clone(), stop_words.clone());
@@ -28,6 +21,15 @@ pub fn rake(document: Vec<String>) -> Vec<(String, f32)> {
   vec_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
   vec_scores
+}
+
+pub fn all_rake(corpus: Vec<Vec<String>>) -> HashMap<usize, Vec<(String, f32)>> {
+  let mut all_rake_scores: HashMap<usize, Vec<(String, f32)>> = HashMap::new();
+  for (i, document) in corpus.iter().enumerate() {
+    all_rake_scores.insert(i, rake(document.clone()));
+  }
+
+  all_rake_scores
 }
 
 fn degree_scores(degree_of_words: HashMap<String, f32>, word_frequency: HashMap<String, f32>) -> HashMap<String, f32> {
@@ -75,7 +77,8 @@ fn phrase_degree_scores(phrases: Vec<String>, degree_scores: HashMap<String, f32
   for phrase in phrases {
     let phrase_words = phrase.split_whitespace();
     for phrase_word in phrase_words {
-      *score.entry(phrase.to_string()).or_default() += degree_scores[phrase_word];
+      let degree_score = degree_scores.get(phrase_word).unwrap_or(&0.);
+      *score.entry(phrase.to_string()).or_default() += degree_score;
     }
   }
 

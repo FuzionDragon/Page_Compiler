@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 use anyhow::{Ok, Result};
 use dirs::home_dir;
@@ -8,8 +10,9 @@ mod preprocess;
 mod tf_idf;
 mod rake;
 
-use preprocess::{ tfidf_preprocess, rake_preprocess, all_terms };
-use tf_idf::{ tf_idf_vectorize, tf_idf, all_tf_idf_vectorize };
+use preprocess::*;
+use tf_idf::{ all_tf_idf_vectorize, compute_all_idf, tf_idf, tf_idf_vectorize };
+use rake::{ all_rake, rake };
 
 const PATH: &str = "dev/rust/page_compiler/src/data.db";
 
@@ -31,22 +34,46 @@ async fn main() -> Result<()>{
 
   sqlite_interface::init(&db).await?;
 
-  let data = vec!("Cats chase mice, dogs bark loudly, and birds fly south in winter.".to_string(), "Running cat quickly exhausted him, but he kept jogged until he collapsed on the grass.".to_string(), "Cat chase mice, dogs bark loudly, and birds fly south in winter.".to_string());
+  let input = "lua is a great scripting language that can be used with other programming languages like rust".to_string();
+  let data = vec![
+    "machine learning is fun".to_string(),                     // Doc 0
+    "deep learning is powerful".to_string(),                   // Doc 1
+    "artificial intelligence is the future".to_string(),       // Doc 2
+    "machine intelligence is rising".to_string(),              // Doc 3
+    "rust programming is fast and safe".to_string(),           // Doc 4
+    "python is great for data science".to_string(),            // Doc 5
+    "data science requires statistics".to_string(),            // Doc 6
+    "statistics is the backbone of ML".to_string(),            // Doc 7
+    "deep neural networks are revolutionary".to_string(),      // Doc 8
+    "rust and python are both awesome languages".to_string(),  // Doc 9
+  ];
 
-  let tfidf_data = tfidf_preprocess(data.clone());
-  let rake_data = rake_preprocess(data.clone());
+  let tfidf_data = corpus_tfidf_preprocess(data.clone());
+  let rake_data = corpus_rake_preprocess(data.clone());
 
-  let all_tfidf_terms = all_terms(tfidf_data.clone());
+  let all_tfidf_scores = all_tf_idf_vectorize(tfidf_data.clone());
+  let all_rake_scores = all_rake(rake_data.clone());
 
-  let rake = rake::rake(rake_data[0].clone());
+  let rake_input = rake_preprocess(input.clone());
+  let tf_idf_input = rake_preprocess(input);
+  let input_top_terms = rake(rake_input.clone());
+  let tf_idf_input_score = tf_idf_vectorize(tf_idf_input, tfidf_data);
 
-  let tf_idf = tf_idf("cat".to_string(), tfidf_data[0].clone(), tfidf_data.clone());
+  for scores in all_tfidf_scores {
+    println!("{} cosine similarity to input: {:?}", scores.0, similarity::cosine_similarity(tf_idf_input_score.clone(), scores.1));
+  }
 
-  let all_vec = all_tf_idf_vectorize(tfidf_data);
-  println!("All vectors: {:?}", all_vec.clone());
+  for scores in all_rake_scores.clone() {
+    println!("{} regular jaccard similarity to input: {:?}", scores.0, similarity::jaccards_similarity(rake_input.clone(), rake_data[scores.0].clone()));
+  }
 
-  let similarity = similarity::cosine_similarity(all_vec[&0].clone(), all_vec[&2].clone());
-  println!("Similarity score: {similarity}");
+  for scores in all_rake_scores.clone() {
+    println!("{} weighted jaccard similarity to input: {:?}", scores.0, similarity::weighted_jaccard_similarity(rake_input.clone(), rake_data[scores.0].clone(), input_top_terms.clone(), all_rake_scores[&scores.0].clone()));
+  }
 
   Ok(())
+}
+
+fn combine_results(tf_idf_scores: HashMap<String, f32>, rake_scores: Vec<(f32, String)>) {
+
 }
