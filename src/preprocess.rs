@@ -1,33 +1,29 @@
-use std::collections::HashSet;
-
 use rust_stemmers::{ Algorithm, Stemmer };
-use stop_words::{ get, LANGUAGE };
 use human_regex::{ one_or_more, punctuation };
 
-pub fn corpus_tfidf_preprocess(corpus: Vec<String>) -> Vec<Vec<String>> {
+pub fn corpus_tfidf_preprocess(corpus: Vec<String>, stop_words: Vec<String>) -> Vec<Vec<String>> {
   let mut processed = Vec::new();
 
   for document in corpus {
-    processed.push(tfidf_preprocess(document));
+    processed.push(tfidf_preprocess(document, stop_words.clone()));
   }
 
   processed
 }
 
 // currently only processes a corpus as opposed to a document
-pub fn corpus_rake_preprocess(corpus: Vec<String>) -> Vec<Vec<String>> {
+pub fn corpus_rake_preprocess(corpus: Vec<String>, stop_words: Vec<String>) -> Vec<Vec<String>> {
   let mut processed = Vec::new();
 
   for document in corpus {
-    processed.push(rake_preprocess(document));
+    processed.push(rake_preprocess(document, stop_words.clone()));
   }
 
   processed
 }
 
-pub fn rake_preprocess(document: String) -> Vec<String> {
+pub fn rake_preprocess(document: String, stop_words: Vec<String>) -> Vec<String> {
   let en_stemmer = Stemmer::create(Algorithm::English);
-
   let lowercase_text = document.to_ascii_lowercase();
   let punctuation_regex = one_or_more(punctuation());
   let no_punctuation_text = punctuation_regex
@@ -39,11 +35,27 @@ pub fn rake_preprocess(document: String) -> Vec<String> {
     .map(|word| en_stemmer.stem(word).to_string())
     .collect();
 
-  clean_text
+  let mut phrases: Vec<String> = Vec::with_capacity(document.len());
+  let mut phrase: Vec<String> = Vec::new();
+
+  for word in clean_text {
+    if stop_words.contains(&word) && !phrase.is_empty() {
+      phrases.push(phrase.clone().join(" "));
+      phrase.clear();
+    } else {
+      phrase.push(word);
+    }
+  }
+  if !phrase.is_empty() {
+    phrases.push(phrase.join(" "));
+  }
+
+  phrases.into_iter()
+    .filter(|word| !stop_words.contains(&word.to_string()))
+    .collect::<Vec<String>>()
 }
 
-pub fn tfidf_preprocess(document: String) -> Vec<String> {
-  let stop_words = get(LANGUAGE::English);
+pub fn tfidf_preprocess(document: String, stop_words: Vec<String>) -> Vec<String> {
   let en_stemmer = Stemmer::create(Algorithm::English);
 
   let lowercase_text = document.to_ascii_lowercase();
@@ -59,14 +71,4 @@ pub fn tfidf_preprocess(document: String) -> Vec<String> {
     .collect();
 
   clean_text
-}
-
-pub fn all_terms(corpus: Vec<Vec<String>>) -> HashSet<String> {
-  let mut all_terms: HashSet<String> = HashSet::new();
-
-  for document in corpus {
-    all_terms.extend(document);
-  }
-
-  all_terms
 }

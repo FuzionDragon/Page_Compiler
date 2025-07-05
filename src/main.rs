@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
+use stop_words::{ get, LANGUAGE };
 use anyhow::{Ok, Result};
 use dirs::home_dir;
 
@@ -11,10 +10,10 @@ mod tf_idf;
 mod rake;
 
 use preprocess::*;
-use tf_idf::{ all_tf_idf_vectorize, compute_all_idf, tf_idf, tf_idf_vectorize };
-use rake::{ all_rake, rake };
 
 const PATH: &str = "dev/rust/page_compiler/src/data.db";
+const COSINE_WEIGHT: f32 = 0.4;
+const THESHOLD: f32 = 0.6;
 
 #[async_std::main]
 async fn main() -> Result<()>{
@@ -34,7 +33,7 @@ async fn main() -> Result<()>{
 
   sqlite_interface::init(&db).await?;
 
-  let input = "lua is a great scripting language that can be used with other programming languages like rust".to_string();
+  let input = "lua is a great scripting language that can be used with other programming languages like rust, it is similar in simplicty to python, however lua is more so used in embedded applications and in some cases game development".to_string();
   let data = vec![
     "machine learning is fun".to_string(),                     // Doc 0
     "deep learning is powerful".to_string(),                   // Doc 1
@@ -48,32 +47,20 @@ async fn main() -> Result<()>{
     "rust and python are both awesome languages".to_string(),  // Doc 9
   ];
 
-  let tfidf_data = corpus_tfidf_preprocess(data.clone());
-  let rake_data = corpus_rake_preprocess(data.clone());
+  let stop_words = get(LANGUAGE::English);
 
-  let all_tfidf_scores = all_tf_idf_vectorize(tfidf_data.clone());
-  let all_rake_scores = all_rake(rake_data.clone());
+  let tfidf_data = corpus_tfidf_preprocess(data.clone(), stop_words.clone());
+  let rake_data = corpus_rake_preprocess(data.clone(), stop_words.clone());
+  let tfidf_input = tfidf_preprocess(input.clone(), stop_words.clone());
+  let rake_input = rake_preprocess(input.clone(), stop_words.clone());
 
-  let rake_input = rake_preprocess(input.clone());
-  let tf_idf_input = rake_preprocess(input);
-  let input_top_terms = rake(rake_input.clone());
-  let tf_idf_input_score = tf_idf_vectorize(tf_idf_input, tfidf_data);
+  let scores = similarity::combined_similarity_scores(tfidf_input, rake_input, tfidf_data, rake_data, COSINE_WEIGHT);
 
-  for scores in all_tfidf_scores {
-    println!("{} cosine similarity to input: {:?}", scores.0, similarity::cosine_similarity(tf_idf_input_score.clone(), scores.1));
+  for score in scores.clone() {
+    println!("{} combined_scores to input: {}", score.0, score.1);
   }
 
-  for scores in all_rake_scores.clone() {
-    println!("{} regular jaccard similarity to input: {:?}", scores.0, similarity::jaccards_similarity(rake_input.clone(), rake_data[scores.0].clone()));
-  }
-
-  for scores in all_rake_scores.clone() {
-    println!("{} weighted jaccard similarity to input: {:?}", scores.0, similarity::weighted_jaccard_similarity(rake_input.clone(), rake_data[scores.0].clone(), input_top_terms.clone(), all_rake_scores[&scores.0].clone()));
-  }
+  println!("{} has the highest score of {}", scores[0].0, scores[0].1);
 
   Ok(())
-}
-
-fn combine_results(tf_idf_scores: HashMap<String, f32>, rake_scores: Vec<(f32, String)>) {
-
 }

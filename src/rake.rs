@@ -1,20 +1,20 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use stop_words::{ get, LANGUAGE };
-
+// the document isnt made up of single words but phrases
 pub fn rake(document: Vec<String>) -> Vec<(String, f32)> {
-  let stop_words: Vec<String> = get(LANGUAGE::English);
-  let phrases = phrases(document.clone(), stop_words.clone());
-  let words: Vec<String> = document.clone()
-    .into_iter()
-    .filter(|word| !stop_words.contains(&word.to_string()))
-    .collect();
+  let mut words: Vec<String> = Vec::new();
 
-  let word_degrees = word_degrees(phrases.clone(), words);
-  let word_frequency = word_frequency(document.clone(), stop_words);
+  for phrase in document.clone() {
+    words.extend(phrase.split_whitespace().map(|v| v.to_string()).collect::<Vec<String>>());
+  }
+
+  let unique_words: HashSet<String> = HashSet::from_iter(words);
+
+  let word_degrees = word_degrees(document.clone(), unique_words);
+  let word_frequency = word_frequency(document.clone());
 
   let degree_scores = degree_scores(word_degrees, word_frequency);
-  let mut scores = phrase_degree_scores(phrases, degree_scores.clone());
+  let mut scores = phrase_degree_scores(document, degree_scores.clone());
   scores.extend(degree_scores);
 
   let mut vec_scores: Vec<(String, f32)> = scores.into_iter().collect();
@@ -42,27 +42,28 @@ fn degree_scores(degree_of_words: HashMap<String, f32>, word_frequency: HashMap<
   degree_scores
 }
 
-fn word_frequency(document: Vec<String>, stop_words: Vec<String>) -> HashMap<String, f32> {
+fn word_frequency(document: Vec<String>) -> HashMap<String, f32> {
   let mut frequencies: HashMap<String, f32> = HashMap::new();
-  let cleaned_document: Vec<String> = document
-    .into_iter()
-    .filter(|word| !stop_words.contains(&word.to_string()))
-    .collect();
+  let mut tokened_document: Vec<String> = Vec::new();
 
-  for word in cleaned_document {
+  for phrase in document {
+    tokened_document.extend(phrase.split_whitespace().map(|v| v.to_string()).collect::<Vec<String>>());
+  }
+
+  for word in tokened_document {
     *frequencies.entry(word).or_default() += 1.;
   }
 
   frequencies
 }
 
-fn word_degrees(phrases: Vec<String>, words: Vec<String>) -> HashMap<String, f32> {
+fn word_degrees(phrases: Vec<String>, words: HashSet<String>) -> HashMap<String, f32> {
   let mut word_degrees: HashMap<String, f32> = HashMap::new();
 
   for phrase in phrases {
     let phrase_words: Vec<&str> = phrase.split_whitespace().collect();
     for phrase_word in phrase_words.clone() {
-      if words.contains(&phrase_word.to_string()) {
+      if words.contains(phrase_word) {
         *word_degrees.entry(phrase_word.to_string()).or_default() += phrase_words.len() as f32;
       }
     }
@@ -83,22 +84,4 @@ fn phrase_degree_scores(phrases: Vec<String>, degree_scores: HashMap<String, f32
   }
 
   score
-}
-
-fn phrases(document: Vec<String>, stop_words: Vec<String>) -> Vec<String> {
-  let mut phrases: Vec<String> = Vec::with_capacity(document.len());
-  let mut phrase: Vec<String> = Vec::new();
-  for word in document {
-    if stop_words.contains(&word) && !phrase.is_empty() {
-      phrases.push(phrase.clone().join(" "));
-      phrase.clear();
-    } else {
-      phrase.push(word);
-    }
-  }
-  if !phrase.is_empty() {
-    phrases.push(phrase.join(" "));
-  }
-
-  phrases
 }
