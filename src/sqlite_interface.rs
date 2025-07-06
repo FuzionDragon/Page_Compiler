@@ -22,18 +22,19 @@ pub struct Term {
 
 pub async fn init(db: &SqlitePool) -> Result<()> {
   sqlx::query(r#"
-    create table if not exists Terms (
-      term_id integer primary key autoincrement,
-      term text unique not null
-      );
+    create table if not exists Scores (
+      term text primary key unique not null,
+      tfidf_score real,
+      rake_score real
+    );
   "#).execute(db)
     .await?;
 
   sqlx::query(r#"
-    create table if not exists Categories (
-      category_id integer primary key autoincrement,
-      category_name text
-      );
+    create table if not exists Documents (
+      document_id integer primary key autoincrement,
+      document_names text
+    );
   "#).execute(db)
     .await?;
 
@@ -41,7 +42,7 @@ pub async fn init(db: &SqlitePool) -> Result<()> {
     create table if not exists Snippets (
       snippet_id integer primary key autoincrement,
       snippet text not null,
-      category_id integer 
+      document_id integer 
     );
   "#).execute(db)
     .await?;

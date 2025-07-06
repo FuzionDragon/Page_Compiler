@@ -1,7 +1,7 @@
 use rust_stemmers::{ Algorithm, Stemmer };
 use human_regex::{ one_or_more, punctuation };
 
-pub fn corpus_tfidf_preprocess(corpus: Vec<String>, stop_words: Vec<String>) -> Vec<Vec<String>> {
+pub fn corpus_tfidf_preprocess(corpus: Vec<&str>, stop_words: Vec<String>) -> Vec<Vec<String>> {
   let mut processed = Vec::new();
 
   for document in corpus {
@@ -12,7 +12,7 @@ pub fn corpus_tfidf_preprocess(corpus: Vec<String>, stop_words: Vec<String>) -> 
 }
 
 // currently only processes a corpus as opposed to a document
-pub fn corpus_rake_preprocess(corpus: Vec<String>, stop_words: Vec<String>) -> Vec<Vec<String>> {
+pub fn corpus_rake_preprocess(corpus: Vec<&str>, stop_words: Vec<String>) -> Vec<Vec<String>> {
   let mut processed = Vec::new();
 
   for document in corpus {
@@ -22,9 +22,9 @@ pub fn corpus_rake_preprocess(corpus: Vec<String>, stop_words: Vec<String>) -> V
   processed
 }
 
-pub fn rake_preprocess(document: String, stop_words: Vec<String>) -> Vec<String> {
+pub fn rake_preprocess(document: &str, stop_words: Vec<String>) -> Vec<String> {
   let en_stemmer = Stemmer::create(Algorithm::English);
-  let lowercase_text = document.to_ascii_lowercase();
+  let lowercase_text = document.to_string().to_ascii_lowercase();
   let punctuation_regex = one_or_more(punctuation());
   let no_punctuation_text = punctuation_regex
     .to_regex()
@@ -55,10 +55,9 @@ pub fn rake_preprocess(document: String, stop_words: Vec<String>) -> Vec<String>
     .collect::<Vec<String>>()
 }
 
-pub fn tfidf_preprocess(document: String, stop_words: Vec<String>) -> Vec<String> {
+pub fn tfidf_preprocess(document: &str, stop_words: Vec<String>) -> Vec<String> {
   let en_stemmer = Stemmer::create(Algorithm::English);
-
-  let lowercase_text = document.to_ascii_lowercase();
+  let lowercase_text = document.to_string().to_ascii_lowercase();
   let punctuation_regex = one_or_more(punctuation());
   let no_punctuation_text = punctuation_regex
     .to_regex()
