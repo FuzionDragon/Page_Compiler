@@ -1,22 +1,25 @@
+use std::collections::HashMap;
 use rust_stemmers::{ Algorithm, Stemmer };
 use human_regex::{ one_or_more, punctuation };
 
-pub fn corpus_tfidf_preprocess(corpus: Vec<&str>, stop_words: Vec<String>) -> Vec<Vec<String>> {
-  let mut processed = Vec::new();
+use crate::{Corpus, CorpusSnippets};
 
-  for document in corpus {
-    processed.push(tfidf_preprocess(document, stop_words.clone()));
+pub fn corpus_tfidf_preprocess(corpus: Corpus, stop_words: Vec<String>) -> CorpusSnippets {
+  let mut processed: CorpusSnippets = HashMap::new();
+
+  for (name, document) in corpus {
+    processed.insert(name, tfidf_preprocess(document.as_str(), stop_words.clone()));
   }
 
   processed
 }
 
 // currently only processes a corpus as opposed to a document
-pub fn corpus_rake_preprocess(corpus: Vec<&str>, stop_words: Vec<String>) -> Vec<Vec<String>> {
-  let mut processed = Vec::new();
+pub fn corpus_rake_preprocess(corpus: Corpus, stop_words: Vec<String>) -> CorpusSnippets {
+  let mut processed: CorpusSnippets = HashMap::new();
 
-  for document in corpus {
-    processed.push(rake_preprocess(document, stop_words.clone()));
+  for (name, document) in corpus {
+    processed.insert(name, rake_preprocess(document.as_str(), stop_words.clone()));
   }
 
   processed

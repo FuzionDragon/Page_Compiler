@@ -1,32 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use super::rake::{ rake, all_rake };
-use super::tf_idf::{ tf_idf_hash, all_tf_idf_hash };
+use crate::{CorpusSnippets, StrCorpusSnippets};
 
-// Scores are obtained from tfidf
-pub fn cosine_similarity(scores_vec_1: Vec<f32>, scores_vec_2: Vec<f32>) -> f32 {
-  let dot_product = scores_vec_1.clone()
-    .iter()
-    .zip(scores_vec_2.clone().iter())
-    .map(|(a, b)| a * b)
-    .sum::<f32>();
-
-  let magnitude_a = scores_vec_1.iter()
-    .map(|a| a.powi(2))
-    .sum::<f32>()
-    .sqrt();
-  
-  let magnitude_b = scores_vec_2.iter()
-    .map(|b| b.powi(2))
-    .sum::<f32>()
-    .sqrt();
-
-  if magnitude_a == 0. || magnitude_b == 0. {
-    0.
-  } else {
-    dot_product / (magnitude_a * magnitude_b)
-  }
-}
+use super::rake::{ rake, corpus_rake };
+use super::tf_idf::{ tf_idf_hash, corpus_tf_idf_hash };
 
 // Scores are obtained from tfidf
 pub fn cosine_similarity_tuple(scores_1: HashMap<String, f32>, scores_2: HashMap<String, f32>) -> f32 {
@@ -63,22 +40,12 @@ pub fn cosine_similarity_tuple(scores_1: HashMap<String, f32>, scores_2: HashMap
   }
 }
 
-pub fn jaccards_similarity(document_1: Vec<String>, document_2: Vec<String>) -> f32 {
-  let words_1: HashSet<String> = document_1.into_iter().collect();
-  let words_2: HashSet<String> = document_2.into_iter().collect();
-
-  let shared_words = words_1.intersection(&words_2).count() as f32;
-  let all_words = words_1.union(&words_2).count() as f32;
-
-  shared_words / all_words
-}
-
 // weights base on RAKE algorithm scores
-pub fn weighted_jaccard_similarity(document_1: Vec<&str>, document_2: Vec<&str>, document_1_scores: HashMap<String, f32>, document_2_scores: HashMap<String, f32>) -> f32 {
+pub fn weighted_jaccard_similarity(document_1: Vec<String>, document_2: Vec<String>, document_1_scores: HashMap<String, f32>, document_2_scores: HashMap<String, f32>) -> f32 {
   let scores_1: HashMap<String, f32> = HashMap::from_iter(document_1_scores);
   let scores_2: HashMap<String, f32> = HashMap::from_iter(document_2_scores);
-  let mut all_words: HashSet<&str> = document_1.clone().into_iter().collect();
-  all_words.extend::<HashSet<&str>>(document_2.clone().into_iter().collect());
+  let mut all_words: HashSet<&str> = document_1.iter().map(|v| v.as_str()).collect();
+  all_words.extend::<HashSet<&str>>(document_2.iter().map(|v| v.as_str()).collect());
 
   let minimum = all_words.clone().into_iter()
     .map(|k| scores_1.get(k)
@@ -101,52 +68,35 @@ pub fn weighted_jaccard_similarity(document_1: Vec<&str>, document_2: Vec<&str>,
   minimum / maximum
 }
 
-pub fn combined_similarity_scores(input_tfidf_data: Vec<String>, input_rake_data: Vec<String>, corpus_tfidf_data: Vec<Vec<String>>, corpus_rake_data: Vec<Vec<String>>, cosine_weight: f32) -> Vec<(usize, f32)> {
-  let str_input_tfidf_data: Vec<&str> = input_tfidf_data.iter().map(|v| v.as_ref()).collect();
-  let str_input_rake_data: Vec<&str> = input_rake_data.iter().map(|v| v.as_ref()).collect();
+pub fn combined_similarity_scores(input_tfidf_data: Vec<String>, input_rake_data: Vec<String>, corpus_tfidf_data: CorpusSnippets, corpus_rake_data: CorpusSnippets, cosine_weight: f32) -> Vec<(String, f32)> {
+  let corpus_tfidf_scores = corpus_tf_idf_hash(corpus_tfidf_data.clone());
+  let corpus_rake_scores = corpus_rake(corpus_rake_data.clone());
 
-  let str_corpus_tfidf_data: Vec<Vec<&str>> = corpus_tfidf_data.iter()
-    .map(|v| 
-      v.iter()
-      .map(|w| w.as_ref())
-      .collect())
-    .collect();
+  let tf_idf_input_score = tf_idf_hash(input_tfidf_data, corpus_tfidf_data);
+  let rake_input_score = rake(input_rake_data.clone());
 
-  let str_corpus_rake_data: Vec<Vec<&str>> = corpus_rake_data.iter()
-    .map(|v| 
-      v.iter()
-      .map(|w| w.as_ref())
-      .collect())
-    .collect();
+  let corpus_1: HashSet<&str> = corpus_tfidf_scores.keys().map(|k| k.as_str()).collect();
+  let corpus_2: HashSet<&str> = corpus_rake_scores.keys().map(|k| k.as_str()).collect();
+  let corpus: HashSet<&str> = corpus_1.union(&corpus_2).map(|v| v.to_owned()).collect();
 
-  let all_tfidf_scores = all_tf_idf_hash(str_corpus_tfidf_data.clone());
-  let all_rake_scores = all_rake(str_corpus_rake_data.clone());
-
-  let tf_idf_input_score = tf_idf_hash(str_input_tfidf_data, str_corpus_tfidf_data);
-  let rake_input_score = rake(str_input_rake_data.clone());
-
-  let corpus_1: HashSet<usize> = all_rake_scores.keys().map(|k| k.to_owned()).collect();
-  let corpus_2: HashSet<usize> = all_rake_scores.keys().map(|k| k.to_owned()).collect();
-  let corpus: HashSet<usize> = corpus_1.union(&corpus_2).map(|v| v.to_owned()).collect();
-
-  let mut combined_scores: HashMap<usize, f32> = HashMap::new();
+  let mut combined_scores: HashMap<String, f32> = HashMap::new();
 
   for document in corpus {
     let cosine_similarity_score = 
-      cosine_similarity_tuple(tf_idf_input_score.clone(), all_tfidf_scores[&document].clone())
+      cosine_similarity_tuple(tf_idf_input_score.clone(), corpus_tfidf_scores[document].clone())
       * cosine_weight;
     
     let weighted_jaccard_similarity_score = 
-      weighted_jaccard_similarity(str_input_rake_data.clone(), str_corpus_rake_data[document].clone(), rake_input_score.clone(), all_rake_scores[&document].clone())
+      weighted_jaccard_similarity(input_rake_data.clone(), corpus_rake_data[document].clone(), rake_input_score.clone(), corpus_rake_scores[document].clone())
       * (1. - cosine_weight);
     
     combined_scores.insert(
-      document,
+      document.to_string(),
       cosine_similarity_score + weighted_jaccard_similarity_score
     );
   }
 
-  let mut sorted_scores: Vec<(usize, f32)> = combined_scores.into_iter().collect();
+  let mut sorted_scores: Vec<(String, f32)> = combined_scores.into_iter().collect();
   sorted_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
   sorted_scores

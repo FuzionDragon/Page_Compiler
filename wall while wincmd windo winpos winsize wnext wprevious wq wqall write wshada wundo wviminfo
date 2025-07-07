@@ -3,30 +3,29 @@ use std::collections::{HashMap, HashSet};
 use crate::CorpusSnippets;
 
 // the document isnt made up of single words but phrases
-pub fn rake(document: Vec<String>) -> HashMap<String, f32> {
-  let str_document: Vec<&str> = document.iter().map(|v| v.as_str()).collect();
+pub fn rake(document: Vec<&str>) -> HashMap<String, f32> {
   let mut words: Vec<&str> = Vec::new();
 
-  for phrase in str_document.clone() {
+  for phrase in document.clone() {
     words.extend::<Vec<&str>>(phrase.split_whitespace().collect());
   }
 
   let unique_words: HashSet<&str> = HashSet::from_iter(words);
 
-  let word_degrees = word_degrees(str_document.clone(), unique_words);
-  let word_frequency = word_frequency(str_document.clone());
+  let word_degrees = word_degrees(document.clone(), unique_words);
+  let word_frequency = word_frequency(document.clone());
   let degree_scores = degree_scores(word_degrees, word_frequency);
 
-  let mut scores = phrase_degree_scores(str_document, degree_scores.clone());
+  let mut scores = phrase_degree_scores(document, degree_scores.clone());
   scores.extend(degree_scores);
 
   scores
 }
 
-pub fn corpus_rake(corpus: CorpusSnippets) -> HashMap<String, HashMap<String, f32>> {
+pub fn all_rake(corpus: CorpusSnippets) -> HashMap<String, HashMap<String, f32>> {
   let mut all_rake_scores: HashMap<String, HashMap<String, f32>> = HashMap::new();
   for (name, document) in corpus {
-    all_rake_scores.insert(name, rake(document));
+    all_rake_scores.insert(name, rake(document.clone()));
   }
 
   all_rake_scores

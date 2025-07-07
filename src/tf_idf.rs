@@ -1,79 +1,55 @@
 use std::collections::{HashMap, HashSet};
 
-pub fn tf_idf(term: &str, document: Vec<&str>, corpus: Vec<Vec<&str>>) -> f32 {
-  tf(term, document) * idf(term, corpus)
+use crate::CorpusSnippets;
+
+pub fn tf_idf(term: &str, document: Vec<&str>, corpus: CorpusSnippets) -> f32 {
+  let str_corpus: Vec<Vec<&str>> = corpus
+    .values()
+    .map(|v| v.iter()
+      .map(|v| v.as_str())
+      .collect())
+    .collect();
+  tf(term, document) * idf(term, str_corpus)
 }
 
-pub fn tf_idf_vectorize(new_document: Vec<&str>, corpus: Vec<Vec<&str>>) -> Vec<f32> {
-  let mut vector: Vec<f32> = Vec::new();
+pub fn corpus_tf_idf_hash(corpus: CorpusSnippets) -> HashMap<String, HashMap<String, f32>> {
+  let mut hashes: HashMap<String, HashMap<String, f32>> = HashMap::new();
   let mut all_terms: HashSet<&str> = HashSet::new();
 
-  for old_document in corpus.clone() {
-    all_terms.extend(old_document);
-  }
-
-  for term in all_terms {
-    vector.push(tf_idf(term, new_document.clone(), corpus.clone()));
-  }
-
-  vector
-}
-
-pub fn tf_idf_hash(new_document: Vec<&str>, corpus: Vec<Vec<&str>>) -> HashMap<String, f32> {
-  let mut scores: HashMap<String, f32> = HashMap::new();
-  let mut all_terms: HashSet<&str> = HashSet::new();
-
-  for old_document in corpus.clone() {
-    all_terms.extend(old_document);
-  }
-
-  for term in all_terms {
-    scores.insert(term.to_string(), tf_idf(term, new_document.clone(), corpus.clone()));
-  }
-
-  scores
-}
-
-pub fn all_tf_idf_vectorize(corpus: Vec<Vec<&str>>) -> HashMap<usize, Vec<f32>> {
-  let mut vectors: HashMap<usize, Vec<f32>> = HashMap::new();
-  let mut all_terms: HashSet<&str> = HashSet::new();
-
-  for document in corpus.clone() {
+  let corpus_documents: Vec<Vec<&str>> = corpus.values().map(|v| v.iter().map(|v| v.as_str()).collect()).collect();
+  for document in corpus_documents {
     all_terms.extend(document);
   }
 
-  for i in 0..corpus.clone().len() {
-    let mut vector: Vec<f32> = Vec::new();
-
+  for (name, document) in corpus.clone() {
+    let str_document: Vec<&str> = document.iter().map(|v| v.as_str()).collect();
     for term in all_terms.clone() {
-      vector.push(tf_idf(term, corpus[i].clone(), corpus.clone()));
+      *hashes.entry(name.to_string())
+        .or_default()
+        .entry(term.to_string())
+        .or_default() 
+        += tf_idf(term, str_document.clone(), corpus.clone());
     }
-
-    vectors.insert(i, vector);
-  }
-
-  vectors
-}
-
-pub fn all_tf_idf_hash(corpus: Vec<Vec<&str>>) -> HashMap<usize, HashMap<String, f32>> {
-  let mut hashes: HashMap<usize, HashMap<String, f32>> = HashMap::new();
-  let mut all_terms: HashSet<&str> = HashSet::new();
-
-  for document in corpus.clone() {
-    all_terms.extend(document);
-  }
-
-  for i in 0..corpus.clone().len() {
-    let mut vector: Vec<f32> = Vec::new();
-
-    for term in all_terms.clone() {
-      vector.push(tf_idf(term, corpus[i].clone(), corpus.clone()));
-    }
-
-    hashes.insert(i, tf_idf_hash(corpus[i].clone(), corpus.clone()));
   }
 
   hashes
+}
+
+pub fn tf_idf_hash(document: Vec<String>, corpus: CorpusSnippets) -> HashMap<String, f32> {
+  let str_document: Vec<&str> = document.iter().map(|v| v.as_str()).collect();
+  let mut scores: HashMap<String, f32> = HashMap::new();
+  let mut all_terms: HashSet<&str> = HashSet::new();
+
+  let corpus_documents: Vec<Vec<&str>> = corpus.values().map(|v| v.iter().map(|v| v.as_str()).collect()).collect();
+  for document in corpus_documents {
+    all_terms.extend(document);
+  }
+
+  for term in all_terms {
+    scores.insert(term.to_string(), tf_idf(term, str_document.clone(), corpus.clone()));
+  }
+
+  scores
 }
 
 fn tf(search_term: &str, document: Vec<&str>) -> f32 {
