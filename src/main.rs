@@ -14,12 +14,11 @@ mod rake;
 use preprocess::*;
 
 pub type CorpusSnippets = HashMap<String, Vec<String>>;
-pub type StrCorpusSnippets <'a> = HashMap<String, Vec<&'a str>>;
 pub type Corpus = HashMap<String, String>;
 
 const PATH: &str = "dev/rust/page_compiler/src/data.db";
 const COSINE_WEIGHT: f32 = 0.4;
-const THESHOLD: f32 = 0.6;
+const THESHOLD: f32 = 0.5;
 
 #[async_std::main]
 async fn main() -> Result<()>{
@@ -37,45 +36,53 @@ async fn main() -> Result<()>{
 
   let db = SqlitePool::connect(&path).await.unwrap();
 
-  sqlite_interface::init(&db).await?;
+  let snippet = "lua is a great scripting language that can be used with other programming languages like rust, it is similar in simplicty to python, however lua is more so used in embedded applications and in some cases game development";
 
-  let input = "lua is a great scripting language that can be used with other programming languages like rust, it is similar in simplicty to python, however lua is more so used in embedded applications and in some cases game development";
+  submit_snippet(snippet, &db).await?;
 
-  let data = get_test_corpus();
+  Ok(())
+}
+
+async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
+
+  let checker = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='Document'")
+    .fetch_all(db)
+    .await?
+    .is_empty();
 
   let stop_words = get(LANGUAGE::English);
 
-  // make sure to retrieve scores for tfidf and rake from previous processing, unless this is the
-  // first run on the notes.
-  // in the future this is only done after the checking is done and the snippet is in a new
-  // document or created a new one
+  let input_tfidf_data = tfidf_preprocess(snippet, stop_words.clone());
+  let input_rake_data = rake_preprocess(snippet, stop_words.clone());
 
-  // job for next time, make sure the corpus preprocessing and processing return hashmaps with the
-  // document names instead of usize, 
-  //
-  // PS screw you past me
-  let corpus_tfidf_data = corpus_tfidf_preprocess(data.clone(), stop_words.clone());
-  let corpus_rake_data = corpus_rake_preprocess(data, stop_words.clone());
-  let input_tfidf_data = tfidf_preprocess(input, stop_words.clone());
-  let input_rake_data = rake_preprocess(input, stop_words.clone());
-  println!("{:?}", corpus_tfidf_data.clone());
-  println!();
-  println!("{:?}", corpus_rake_data.clone());
-  println!();
-  println!("{:?}", input_tfidf_data.clone());
-  println!();
-  println!("{:?}", input_rake_data.clone());
-
-  let scores = similarity::combined_similarity_scores(input_tfidf_data, input_rake_data, corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
-
-  for score in scores.clone() {
-    println!("{} combined_scores to input: {}", score.0, score.1);
-  }
-
-  if scores[0].1 >= THESHOLD {
-    println!("{} is the chosen document with a score of {}", scores[0].0, scores[0].1);
+  if checker {
+    sqlite_interface::init(db).await?;
   } else {
-    println!("{} doesn't meet the threshold with a score of {}", scores[0].0, scores[0].1);
+    let data = get_test_corpus();
+
+    let corpus_tfidf_data = corpus_tfidf_preprocess(data.clone(), stop_words.clone());
+    let corpus_rake_data = corpus_rake_preprocess(data, stop_words.clone());
+
+    println!("{:?}", corpus_tfidf_data.clone());
+    println!();
+    println!("{:?}", corpus_rake_data.clone());
+    println!();
+    println!("{:?}", input_tfidf_data.clone());
+    println!();
+    println!("{:?}", input_rake_data.clone());
+    println!();
+
+    let scores = similarity::combined_similarity_scores(input_tfidf_data, input_rake_data, corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
+
+    for score in scores.clone() {
+      println!("{} combined_scores to input: {}", score.0, score.1);
+    }
+
+    if scores[0].1 >= THESHOLD {
+      println!("{} is the chosen document with a score of {}", scores[0].0, scores[0].1);
+    } else {
+      println!("{} doesn't meet the threshold with a score of {}", scores[0].0, scores[0].1);
+    }
   }
 
   Ok(())

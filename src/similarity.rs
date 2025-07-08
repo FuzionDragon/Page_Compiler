@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{CorpusSnippets, StrCorpusSnippets};
+use crate::CorpusSnippets;
 
 use super::rake::{ rake, corpus_rake };
 use super::tf_idf::{ tf_idf_hash, corpus_tf_idf_hash };
@@ -75,13 +75,13 @@ pub fn combined_similarity_scores(input_tfidf_data: Vec<String>, input_rake_data
   let tf_idf_input_score = tf_idf_hash(input_tfidf_data, corpus_tfidf_data);
   let rake_input_score = rake(input_rake_data.clone());
 
-  let corpus_1: HashSet<&str> = corpus_tfidf_scores.keys().map(|k| k.as_str()).collect();
-  let corpus_2: HashSet<&str> = corpus_rake_scores.keys().map(|k| k.as_str()).collect();
-  let corpus: HashSet<&str> = corpus_1.union(&corpus_2).map(|v| v.to_owned()).collect();
+  let documents_1: HashSet<&str> = corpus_tfidf_scores.keys().map(|k| k.as_str()).collect();
+  let documents_2: HashSet<&str> = corpus_rake_scores.keys().map(|k| k.as_str()).collect();
+  let all_documents: HashSet<&str> = documents_1.union(&documents_2).map(|v| v.to_owned()).collect();
 
   let mut combined_scores: HashMap<String, f32> = HashMap::new();
 
-  for document in corpus {
+  for document in all_documents {
     let cosine_similarity_score = 
       cosine_similarity_tuple(tf_idf_input_score.clone(), corpus_tfidf_scores[document].clone())
       * cosine_weight;

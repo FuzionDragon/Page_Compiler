@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{ Ok, Result };
-use sqlx::{sqlite, FromRow, SqlitePool};
+use sqlx::{FromRow, SqlitePool};
 
 type Corpus = Vec<Document>;
 type Document = HashMap<String, String>;
@@ -20,15 +20,10 @@ pub struct Term {
 }
 
 pub async fn init(db: &SqlitePool) -> Result<()> {
-  sqlx::query(r#"
-    CREATE TABLE IF NOT EXISTS Term (
-      term TEXT PRIMARY KEY UNIQUE NOT NULL,
-      tfidf_score REAL,
-      rake_score REAL
-    );
-  "#).execute(db)
-    .await?;
-
+  // requires a query of a name of a table from sqlite_master, lets say Document as it is the most
+  // important table in the database, and if it has nothing, it shows that there is no data to take
+  // from for the operations, so push the snippet data as a new document, otherwise fetch the data
+  // and use it as usual to do the checking and usual opertations
   sqlx::query(r#"
     CREATE TABLE IF NOT EXISTS Document (
       document_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +36,40 @@ pub async fn init(db: &SqlitePool) -> Result<()> {
     CREATE TABLE IF NOT EXISTS Snippet (
       snippet_id INTEGER PRIMARY KEY AUTOINCREMENT,
       snippet TEXT NOT NULL,
-      document_id INTEGER,
+      document_id INTEGER NOT NULL,
+      FOREIGN KEY (document_id)
+        REFERENCES Document (document_id)
+    );
+  "#).execute(db)
+    .await?;
+
+  sqlx::query(r#"
+    CREATE TABLE IF NOT EXISTS TFIDF_Term (
+      term_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      term TEXT NOT NULL,
+      document_id INTEGER NOT NULL,
+      FOREIGN KEY (document_id)
+        REFERENCES Document (document_id)
+    );
+  "#).execute(db)
+    .await?;
+
+  sqlx::query(r#"
+    CREATE TABLE IF NOT EXISTS RAKE_Phrase (
+      phrase_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phrase TEXT NOT NULL,
+      document_id INTEGER NOT NULL,
+      FOREIGN KEY (document_id)
+        REFERENCES Document (document_id)
+    );
+  "#).execute(db)
+    .await?;
+
+  sqlx::query(r#"
+    CREATE TABLE IF NOT EXISTS Snippet (
+      snippet_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      snippet TEXT NOT NULL,
+      document_id INTEGER NOT NULL,
       FOREIGN KEY (document_id)
         REFERENCES Document (document_id)
     );
