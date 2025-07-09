@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use anyhow::{ Ok, Result };
 use sqlx::{FromRow, SqlitePool};
 
-type Corpus = Vec<Document>;
+use crate::{Corpus, CorpusSnippets};
+
 type Document = HashMap<String, String>;
 
 #[derive(Debug, FromRow, Clone)]
@@ -13,10 +14,21 @@ pub struct Snippet {
 }
 
 #[derive(Debug, FromRow, Clone)]
+pub struct Phrase {
+  phrase: String,
+  document_name: String,
+}
+
+#[derive(Debug, FromRow, Clone)]
 pub struct Term {
   term: String,
-  tfidf_score: f32,
-  rake_score: f32,
+  document_name: String,
+}
+
+#[derive(Debug, FromRow, Clone)]
+struct DocumentRow {
+  document_id: i32,
+  document_name: String,
 }
 
 pub async fn init(db: &SqlitePool) -> Result<()> {
@@ -79,44 +91,65 @@ pub async fn init(db: &SqlitePool) -> Result<()> {
   Ok(())
 }
 
-pub async fn load_snippets(db: &SqlitePool) -> Result<Vec<Snippet>> {
-  let query = r#"
+pub async fn load_corpus_snippets(db: &SqlitePool) -> Result<CorpusSnippets> {
+  let snippets = sqlx::query_as::<_, Snippet>(r#"
     SELECT Document.document_name, snippet FROM Snippet
     LEFT JOIN Document ON Snippet.document_id == Document.document_id;
-  "#;
-
-  let snippets = sqlx::query_as::<_, Snippet>(query)
+  "#)
     .fetch_all(db)
     .await?;
 
-  Ok(snippets)
-}
-
-pub async fn load_documents(db: &SqlitePool) -> Result<Document> {
-  let snippets = load_snippets(db).await?;
-
-  let mut documents: Document = HashMap::new();
-
+  let mut corpus_snippets: CorpusSnippets = HashMap::new();
   for snippet in snippets {
-    documents
-      .entry(snippet.document.clone())
-      .and_modify(|v| v.push_str("\n\n{snippet.text.clone()}"))
-      .or_insert(snippet.text.clone());
+    corpus_snippets.entry(snippet.document).or_default().push(snippet.text);
   }
 
-  Ok(documents)
+  Ok(corpus_snippets)
 }
 
-pub async fn load_terms(db: &SqlitePool) -> Result<Vec<Term>> {
-  let query = r#"
-    SELECT * FROM Term;
-  "#;
+pub async fn load_corpus(db: &SqlitePool) -> Result<Corpus> {
+  let corpus: Corpus = load_corpus_snippets(db)
+    .await?
+    .into_iter()
+    .map(|(k, v)| {
+      let val = v.join("\n\n");
+      (k, val)
+    })
+    .collect();
 
-  let terms = sqlx::query_as::<_, Term>(query)
+  Ok(corpus)
+}
+
+pub async fn load_tfidf_data(db: &SqlitePool) -> Result<CorpusSnippets> {
+  let terms = sqlx::query_as::<_, Term>(r#"
+    SELECT term, Document.document_name FROM TFIDF_Term
+    JOIN Document ON Document.document_id = TFIDF_TERM.document_id;
+  "#)
     .fetch_all(db)
     .await?;
 
-  Ok(terms)
+  let mut corpus_terms: CorpusSnippets = HashMap::new();
+  for term in terms {
+    corpus_terms.entry(term.document_name).or_default().push(term.term);
+  }
+
+  Ok(corpus_terms)
+}
+
+pub async fn load_rake_data(db: &SqlitePool) -> Result<CorpusSnippets> {
+  let phrases = sqlx::query_as::<_, Phrase>(r#"
+    SELECT phrase, Document.document_name FROM RAKE_Phrase
+    JOIN Document ON Document.document_id = RAKE_Phrase.document_id;
+  "#)
+    .fetch_all(db)
+    .await?;
+
+  let mut corpus_phrases: CorpusSnippets = HashMap::new();
+  for phrase in phrases {
+    corpus_phrases.entry(phrase.document_name).or_default().push(phrase.phrase);
+  }
+
+  Ok(corpus_phrases)
 }
 
 pub async fn add_snippets(db: &SqlitePool, snippets: Vec<Snippet>) -> Result<()> {
@@ -131,36 +164,44 @@ pub async fn add_snippets(db: &SqlitePool, snippets: Vec<Snippet>) -> Result<()>
   Ok(())
 }
 
-pub async fn add_terms(db: &SqlitePool, terms: Vec<Term>) -> Result<()> {
-  for term in terms {
-    sqlx::query("INSERT INTO Term (term, tfidf_score, rake_score) VALUES ($1, $2, $3)")
-      .bind(term.term)
-      .bind(term.tfidf_score)
-      .bind(term.rake_score)
+pub async fn add_document(db: &SqlitePool, document_name: &str, snippet: &str, tfidf_terms: Vec<String>, rake_phrases: Vec<String>) -> Result<()> {
+  sqlx::query("INSERT INTO Document (document_name) VALUES ($1)")
+    .bind(document_name)
+    .execute(db)
+    .await?;
+
+  let document_row = sqlx::query_as::<_, DocumentRow>("SELECT document_id, document_name FROM Document WHERE document_name = $1")
+    .bind(document_name)
+    .fetch_one(db)
+    .await?;
+
+  let document_id = document_row.document_id;
+
+  sqlx::query("INSERT INTO Snippet (snippet, document_id) VALUES ($1, $2)")
+    .bind(snippet)
+    .bind(document_id)
+    .execute(db)
+    .await?;
+
+  for term in tfidf_terms {
+    sqlx::query(r#"
+        INSERT INTO TFIDF_Term (term, document_id) VALUES ($1, $2)
+      "#)
+      .bind(term)
+      .bind(document_id)
       .execute(db)
       .await?;
   }
-  Ok(())
-}
 
-pub async fn update_tfidf_scores(db: &SqlitePool, new_tfidf_scores: HashMap<String, f32>) -> Result<()> {
-  for (term, score) in new_tfidf_scores {
+  for phrase in rake_phrases {
+    sqlx::query(r#"
+        INSERT INTO RAKE_Phrase (phrase, document_id) VALUES ($1, $2)
+      "#)
+      .bind(phrase)
+      .bind(document_id)
+      .execute(db)
+      .await?;
   }
-//  let directories  = sqlx::query_as::<_, Snippet>("SELECT * FROM Snippets WHERE dir==$1")
-//    .bind(&new_dir)
-//    .fetch_all(db)
-//    .await?;
-//
-//  if directories.is_empty() {
-//    sqlx::query(r#"
-//      UPDATE Snippets
-//      SET dir=$1
-//      WHERE name=$2;
-//      "#).bind(new_dir)
-//      .bind(name)
-//      .execute(db)
-//      .await?;
-//  }
 
   Ok(())
 }

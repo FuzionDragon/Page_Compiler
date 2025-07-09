@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{ HashSet, HashMap };
 
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 use stop_words::{ get, LANGUAGE };
@@ -11,14 +11,12 @@ mod preprocess;
 mod tf_idf;
 mod rake;
 
-use preprocess::*;
-
 pub type CorpusSnippets = HashMap<String, Vec<String>>;
 pub type Corpus = HashMap<String, String>;
 
 const PATH: &str = "dev/rust/page_compiler/src/data.db";
 const COSINE_WEIGHT: f32 = 0.4;
-const THESHOLD: f32 = 0.5;
+const THESHOLD: f32 = 0.6;
 
 #[async_std::main]
 async fn main() -> Result<()>{
@@ -52,27 +50,21 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
 
   let stop_words = get(LANGUAGE::English);
 
-  let input_tfidf_data = tfidf_preprocess(snippet, stop_words.clone());
-  let input_rake_data = rake_preprocess(snippet, stop_words.clone());
+  let input_tfidf_data = preprocess::tfidf_preprocess(snippet, stop_words.clone());
+  let input_rake_data = preprocess::rake_preprocess(snippet, stop_words.clone());
 
   if checker {
     sqlite_interface::init(db).await?;
+    sqlite_interface::add_document(db, "first document", snippet, input_tfidf_data, input_rake_data).await?;
   } else {
     let data = get_test_corpus();
 
-    let corpus_tfidf_data = corpus_tfidf_preprocess(data.clone(), stop_words.clone());
-    let corpus_rake_data = corpus_rake_preprocess(data, stop_words.clone());
+//    let corpus_tfidf_data = preprocess::corpus_tfidf_preprocess(data.clone(), stop_words.clone());
+//    let corpus_rake_data = preprocess::corpus_rake_preprocess(data, stop_words.clone());
+    let corpus_tfidf_data = sqlite_interface::load_tfidf_data(db).await?;
+    let corpus_rake_data = sqlite_interface::load_rake_data(db).await?;
 
-    println!("{:?}", corpus_tfidf_data.clone());
-    println!();
-    println!("{:?}", corpus_rake_data.clone());
-    println!();
-    println!("{:?}", input_tfidf_data.clone());
-    println!();
-    println!("{:?}", input_rake_data.clone());
-    println!();
-
-    let scores = similarity::combined_similarity_scores(input_tfidf_data, input_rake_data, corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
+    let scores = combined_similarity_scores(input_tfidf_data, input_rake_data, corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
 
     for score in scores.clone() {
       println!("{} combined_scores to input: {}", score.0, score.1);
@@ -86,6 +78,40 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
   }
 
   Ok(())
+}
+
+fn combined_similarity_scores(input_tfidf_data: Vec<String>, input_rake_data: Vec<String>, corpus_tfidf_data: CorpusSnippets, corpus_rake_data: CorpusSnippets, cosine_weight: f32) -> Vec<(String, f32)> {
+  let corpus_tfidf_scores = tf_idf::corpus_tf_idf_hash(corpus_tfidf_data.clone());
+  let corpus_rake_scores = rake::corpus_rake(corpus_rake_data.clone());
+
+  let tf_idf_input_score = tf_idf::tf_idf_hash(input_tfidf_data, corpus_tfidf_data);
+  let rake_input_score = rake::rake(input_rake_data.clone());
+
+  let documents_1: HashSet<&str> = corpus_tfidf_scores.keys().map(|k| k.as_str()).collect();
+  let documents_2: HashSet<&str> = corpus_rake_scores.keys().map(|k| k.as_str()).collect();
+  let all_documents: HashSet<&str> = documents_1.union(&documents_2).map(|v| v.to_owned()).collect();
+
+  let mut combined_scores: HashMap<String, f32> = HashMap::new();
+
+  for document in all_documents {
+    let cosine_similarity_score = 
+      similarity::cosine_similarity_tuple(tf_idf_input_score.clone(), corpus_tfidf_scores[document].clone())
+      * cosine_weight;
+    
+    let weighted_jaccard_similarity_score = 
+      similarity::weighted_jaccard_similarity(input_rake_data.clone(), corpus_rake_data[document].clone(), rake_input_score.clone(), corpus_rake_scores[document].clone())
+      * (1. - cosine_weight);
+    
+    combined_scores.insert(
+      document.to_string(),
+      cosine_similarity_score + weighted_jaccard_similarity_score
+    );
+  }
+
+  let mut sorted_scores: Vec<(String, f32)> = combined_scores.into_iter().collect();
+  sorted_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+  sorted_scores
 }
 
 fn get_test_corpus() -> HashMap<String, String> {
@@ -143,3 +169,4 @@ fn get_test_corpus() -> HashMap<String, String> {
 
   corpus
 }
+

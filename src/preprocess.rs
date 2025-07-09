@@ -14,7 +14,6 @@ pub fn corpus_tfidf_preprocess(corpus: Corpus, stop_words: Vec<String>) -> Corpu
   processed
 }
 
-// currently only processes a corpus as opposed to a document
 pub fn corpus_rake_preprocess(corpus: Corpus, stop_words: Vec<String>) -> CorpusSnippets {
   let mut processed: CorpusSnippets = HashMap::new();
 
