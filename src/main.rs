@@ -52,6 +52,7 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
   let input_tfidf_data = preprocess::tfidf_preprocess(snippet, stop_words.clone());
   let input_rake_data = preprocess::rake_preprocess(snippet, stop_words.clone());
 
+  // temporary name: case it is the first snippet entry into the database
   if checker {
     sqlite_interface::init(db).await?;
     sqlite_interface::add_document(db, "first document", snippet, input_tfidf_data, input_rake_data).await?;
@@ -75,23 +76,25 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
     let corpus_tfidf_data = sqlite_interface::load_tfidf_data(db).await?;
     let corpus_rake_data = sqlite_interface::load_rake_data(db).await?;
 
+    // temporary name: case there is a title or the first line has the users chosen prefix in the
+    // snippet, then just create a new document
     let check = false;
 
     if check {
       println!("Found title");
       let title = "test";
+      sqlite_interface::add_snippet(db, snippet, title).await?;
       sqlite_interface::update_tfidf_data(db,input_tfidf_data, title).await?;
       sqlite_interface::update_rake_data(db, input_rake_data, title).await?;
-      sqlite_interface::add_snippet(db, snippet, title).await?;
     } else {
       let scores = combined_similarity_scores(input_tfidf_data.clone(), input_rake_data.clone(), corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
 
       if scores[0].1 >= THESHOLD {
         println!("{} is the chosen document with a score of {}", scores[0].0, scores[0].1);
 
+        sqlite_interface::add_snippet(db, snippet, &scores[0].0).await?;
         sqlite_interface::update_tfidf_data(db, input_tfidf_data, &scores[0].0).await?;
         sqlite_interface::update_rake_data(db, input_rake_data, &scores[0].0).await?;
-        sqlite_interface::add_snippet(db, snippet, &scores[0].0).await?;
       } else {
         println!("{} doesn't meet the threshold with a score of {}", scores[0].0, scores[0].1);
         println!("Creating new document");

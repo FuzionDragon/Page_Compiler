@@ -9,8 +9,15 @@ type Document = HashMap<String, String>;
 
 #[derive(Debug, FromRow, Clone)]
 pub struct Snippet {
-  text: String,
+  snippet: String,
   document: String,
+}
+
+#[derive(Debug, FromRow, Clone)]
+pub struct SnippetRow {
+  snippet_id: i32,
+  snippet: String,
+  document_id: i32,
 }
 
 #[derive(Debug, FromRow, Clone)]
@@ -42,9 +49,9 @@ pub async fn init(db: &SqlitePool) -> Result<()> {
 
   sqlx::query(r#"
     CREATE TABLE IF NOT EXISTS Snippet (
+      snippet_id INTEGER PRIMARY KEY AUTOINCREMENT,
       snippet TEXT NOT NULL,
       document_id INTEGER NOT NULL,
-      PRIMARY KEY (snippet, document_id),
       FOREIGN KEY (document_id)
         REFERENCES Document (document_id)
     );
@@ -54,10 +61,10 @@ pub async fn init(db: &SqlitePool) -> Result<()> {
   sqlx::query(r#"
     CREATE TABLE IF NOT EXISTS TFIDF_Term (
       term TEXT NOT NULL,
-      document_id INTEGER NOT NULL,
-      PRIMARY KEY (term, document_id),
-      FOREIGN KEY (document_id)
-        REFERENCES Document (document_id)
+      snippet_id INTEGER NOT NULL,
+      PRIMARY KEY (term, snippet_id),
+      FOREIGN KEY (snippet_id)
+        REFERENCES Snippet (snippet_id)
     );
   "#).execute(db)
     .await?;
@@ -65,21 +72,10 @@ pub async fn init(db: &SqlitePool) -> Result<()> {
   sqlx::query(r#"
     CREATE TABLE IF NOT EXISTS RAKE_Phrase (
       phrase TEXT NOT NULL,
-      document_id INTEGER NOT NULL,
-      PRIMARY KEY (phrase, document_id),
-      FOREIGN KEY (document_id)
-        REFERENCES Document (document_id)
-    );
-  "#).execute(db)
-    .await?;
-
-  sqlx::query(r#"
-    CREATE TABLE IF NOT EXISTS Snippet (
-      snippet_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      snippet TEXT NOT NULL,
-      document_id INTEGER NOT NULL,
-      FOREIGN KEY (document_id)
-        REFERENCES Document (document_id)
+      snippet_id INTEGER NOT NULL,
+      PRIMARY KEY (phrase, snippet_id),
+      FOREIGN KEY (snippet_id)
+        REFERENCES Snippet (snippet_id)
     );
   "#).execute(db)
     .await?;
@@ -97,7 +93,7 @@ pub async fn load_corpus_snippets(db: &SqlitePool) -> Result<CorpusSnippets> {
 
   let mut corpus_snippets: CorpusSnippets = HashMap::new();
   for snippet in snippets {
-    corpus_snippets.entry(snippet.document).or_default().push(snippet.text);
+    corpus_snippets.entry(snippet.document).or_default().push(snippet.snippet);
   }
 
   Ok(corpus_snippets)
@@ -119,7 +115,9 @@ pub async fn load_corpus(db: &SqlitePool) -> Result<Corpus> {
 pub async fn load_tfidf_data(db: &SqlitePool) -> Result<CorpusSnippets> {
   let terms = sqlx::query_as::<_, Term>(r#"
     SELECT term, Document.document_name FROM TFIDF_Term
-    JOIN Document ON Document.document_id = TFIDF_TERM.document_id;
+    JOIN Snippet ON Snippet.snippet_id = TFIDF_Term.snippet_id
+    JOIN Document ON Document.document_id = Snippet.document_id
+    GROUP BY term;
   "#)
     .fetch_all(db)
     .await?;
@@ -135,7 +133,9 @@ pub async fn load_tfidf_data(db: &SqlitePool) -> Result<CorpusSnippets> {
 pub async fn load_rake_data(db: &SqlitePool) -> Result<CorpusSnippets> {
   let phrases = sqlx::query_as::<_, Phrase>(r#"
     SELECT phrase, Document.document_name FROM RAKE_Phrase
-    JOIN Document ON Document.document_id = RAKE_Phrase.document_id;
+    JOIN Snippet ON Snippet.snippet_id = RAKE_Phrase.snippet_id
+    JOIN Document ON Document.document_id = Snippet.document_id
+    GROUP BY phrase;
   "#)
     .fetch_all(db)
     .await?;
@@ -154,10 +154,15 @@ pub async fn update_tfidf_data(db: &SqlitePool, terms: Vec<String>, document: &s
     .fetch_one(db)
     .await?;
 
+  let snippet_row = sqlx::query_as::<_, SnippetRow>("SELECT * FROM Snippet WHERE document_id = $1")
+    .bind(document_row.document_id)
+    .fetch_one(db)
+    .await?;
+
   for term in terms {
-    sqlx::query("INSERT OR IGNORE INTO TFIDF_Term (term, document_id) VALUES ($1, $2) ON CONFLICT(term, document_id) DO NOTHING")
+    sqlx::query("INSERT OR IGNORE INTO TFIDF_Term (term, snippet_id) VALUES ($1, $2) ON CONFLICT(term, snippet_id) DO NOTHING")
       .bind(term)
-      .bind(document_row.document_id)
+      .bind(snippet_row.snippet_id)
       .execute(db)
       .await?;
   }
@@ -171,10 +176,15 @@ pub async fn update_rake_data(db: &SqlitePool, phrases: Vec<String>, document: &
     .fetch_one(db)
     .await?;
 
+  let snippet_row = sqlx::query_as::<_, SnippetRow>("SELECT * FROM Snippet WHERE document_id = $1")
+    .bind(document_row.document_id)
+    .fetch_one(db)
+    .await?;
+
   for phrase in phrases {
-    sqlx::query("INSERT OR IGNORE INTO RAKE_Phrase (phrase, document_id) VALUES ($1, $2) ON CONFLICT(phrase, document_id) DO NOTHING")
+    sqlx::query("INSERT OR IGNORE INTO RAKE_Phrase (phrase, snippet_id) VALUES ($1, $2) ON CONFLICT(phrase, snippet_id) DO NOTHING")
       .bind(phrase)
-      .bind(document_row.document_id)
+      .bind(snippet_row.snippet_id)
       .execute(db)
       .await?;
   }
@@ -195,7 +205,7 @@ pub async fn add_snippet(db: &SqlitePool, snippet: &str, document: &str) -> Resu
 
   let document_id = document_row.document_id;
 
-  sqlx::query("INSERT INTO Snippet (snippet, document_id) VALUES ($1, $2) ON CONFLICT(snippet, document_id) DO NOTHING")
+  sqlx::query("INSERT INTO Snippet (snippet, document_id) VALUES ($1, $2)")
     .bind(snippet)
     .bind(document_id)
     .execute(db)
