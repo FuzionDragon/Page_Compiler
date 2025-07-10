@@ -55,7 +55,6 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
   let input_tfidf_data = preprocess::tfidf_preprocess(snippet, stop_words.clone());
   let input_rake_data = preprocess::rake_preprocess(snippet, stop_words.clone());
 
-  // temporary name: case it is the first snippet entry into the database
   if first_entry {
     sqlite_interface::init(db).await?;
     
@@ -70,7 +69,6 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
 
     if let Some(title) = title {
       sqlite_interface::add_document(db, title, snippet, input_tfidf_data, input_rake_data).await?;
-      println!("Added do");
     } else {
       let scores = combined_similarity_scores(input_tfidf_data.clone(), input_rake_data.clone(), corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
 
