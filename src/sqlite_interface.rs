@@ -217,11 +217,8 @@ pub async fn add_snippet(db: &SqlitePool, snippet: &str, document: &str) -> Resu
 
 pub async fn add_document(db: &SqlitePool, document_name: &str, snippet: &str, tfidf_terms: Vec<String>, rake_phrases: Vec<String>) -> Result<()> {
   add_snippet(db, snippet, document_name).await?;
-  println!("Added snippet");
   update_tfidf_data(db, tfidf_terms, document_name).await?;
-  println!("Updated tfidf");
   update_rake_data(db, rake_phrases, document_name).await?;
-  println!("Updated rake");
 
   Ok(())
 }
