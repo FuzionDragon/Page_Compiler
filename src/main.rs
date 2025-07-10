@@ -42,7 +42,6 @@ async fn main() -> Result<()>{
 }
 
 async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
-
   let checker = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='Document'")
     .fetch_all(db)
     .await?
@@ -64,7 +63,7 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
     let corpus_tfidf_data = sqlite_interface::load_tfidf_data(db).await?;
     let corpus_rake_data = sqlite_interface::load_rake_data(db).await?;
 
-    let scores = combined_similarity_scores(input_tfidf_data, input_rake_data, corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
+    let scores = combined_similarity_scores(input_tfidf_data.clone(), input_rake_data.clone(), corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
 
     for score in scores.clone() {
       println!("{} combined_scores to input: {}", score.0, score.1);
@@ -75,6 +74,9 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
     } else {
       println!("{} doesn't meet the threshold with a score of {}", scores[0].0, scores[0].1);
     }
+
+    sqlite_interface::update_tfidf_data(db, input_tfidf_data, &scores[0].0).await?;
+    sqlite_interface::update_rake_data(db, input_rake_data, &scores[0].0).await?;
   }
 
   Ok(())
