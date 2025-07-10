@@ -41,8 +41,8 @@ struct DocumentRow {
 pub async fn init(db: &SqlitePool) -> Result<()> {
   sqlx::query(r#"
     CREATE TABLE IF NOT EXISTS Document (
-      document_id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
-      document_name TEXT
+      document_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      document_name TEXT UNIQUE
     );
   "#).execute(db)
     .await?;
@@ -50,12 +50,13 @@ pub async fn init(db: &SqlitePool) -> Result<()> {
   sqlx::query(r#"
     CREATE TABLE IF NOT EXISTS Snippet (
       snippet_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      snippet TEXT NOT NULL,
+      snippet TEXT NOT NULL UNIQUE,
       document_id INTEGER NOT NULL,
+      UNIQUE (snippet, document_id),
       FOREIGN KEY (document_id)
         REFERENCES Document (document_id)
     );
-  "#).execute(db)
+ "#).execute(db)
     .await?;
 
   sqlx::query(r#"
@@ -149,18 +150,18 @@ pub async fn load_rake_data(db: &SqlitePool) -> Result<CorpusSnippets> {
 }
 
 pub async fn update_tfidf_data(db: &SqlitePool, terms: Vec<String>, document: &str) -> Result<()> {
-  let document_row = sqlx::query_as::<_, DocumentRow>("SELECT * FROM Document WHERE document_name = $1")
+  let document_row = sqlx::query_as::<_, DocumentRow>("SELECT * FROM Document WHERE document_name = $1;")
     .bind(document)
     .fetch_one(db)
     .await?;
 
-  let snippet_row = sqlx::query_as::<_, SnippetRow>("SELECT * FROM Snippet WHERE document_id = $1")
+  let snippet_row = sqlx::query_as::<_, SnippetRow>("SELECT * FROM Snippet WHERE document_id = $1;")
     .bind(document_row.document_id)
     .fetch_one(db)
     .await?;
 
   for term in terms {
-    sqlx::query("INSERT OR IGNORE INTO TFIDF_Term (term, snippet_id) VALUES ($1, $2) ON CONFLICT(term, snippet_id) DO NOTHING")
+    sqlx::query("INSERT OR IGNORE INTO TFIDF_Term (term, snippet_id) VALUES ($1, $2) ON CONFLICT(term, snippet_id) DO NOTHING;")
       .bind(term)
       .bind(snippet_row.snippet_id)
       .execute(db)
@@ -171,18 +172,18 @@ pub async fn update_tfidf_data(db: &SqlitePool, terms: Vec<String>, document: &s
 }
 
 pub async fn update_rake_data(db: &SqlitePool, phrases: Vec<String>, document: &str) -> Result<()> {
-  let document_row = sqlx::query_as::<_, DocumentRow>("SELECT * FROM Document WHERE document_name = $1")
+  let document_row = sqlx::query_as::<_, DocumentRow>("SELECT * FROM Document WHERE document_name = $1;")
     .bind(document)
     .fetch_one(db)
     .await?;
 
-  let snippet_row = sqlx::query_as::<_, SnippetRow>("SELECT * FROM Snippet WHERE document_id = $1")
+  let snippet_row = sqlx::query_as::<_, SnippetRow>("SELECT * FROM Snippet WHERE document_id = $1;")
     .bind(document_row.document_id)
     .fetch_one(db)
     .await?;
 
   for phrase in phrases {
-    sqlx::query("INSERT OR IGNORE INTO RAKE_Phrase (phrase, snippet_id) VALUES ($1, $2) ON CONFLICT(phrase, snippet_id) DO NOTHING")
+    sqlx::query("INSERT OR IGNORE INTO RAKE_Phrase (phrase, snippet_id) VALUES ($1, $2) ON CONFLICT(phrase, snippet_id) DO NOTHING;")
       .bind(phrase)
       .bind(snippet_row.snippet_id)
       .execute(db)
@@ -193,19 +194,19 @@ pub async fn update_rake_data(db: &SqlitePool, phrases: Vec<String>, document: &
 }
 
 pub async fn add_snippet(db: &SqlitePool, snippet: &str, document: &str) -> Result<()> {
-  sqlx::query("INSERT INTO Document (document_name) VALUES ($1)")
+  sqlx::query("INSERT OR IGNORE INTO Document (document_name) VALUES ($1) ON CONFLICT(document_name) DO NOTHING;")
     .bind(document)
     .execute(db)
     .await?;
 
-  let document_row = sqlx::query_as::<_, DocumentRow>("SELECT document_id, document_name FROM Document WHERE document_name = $1")
+  let document_row = sqlx::query_as::<_, DocumentRow>("SELECT document_id, document_name FROM Document WHERE document_name = $1;")
     .bind(document)
     .fetch_one(db)
     .await?;
 
   let document_id = document_row.document_id;
 
-  sqlx::query("INSERT INTO Snippet (snippet, document_id) VALUES ($1, $2)")
+  sqlx::query("INSERT OR IGNORE INTO Snippet (snippet, document_id) VALUES ($1, $2) ON CONFLICT(snippet, document_id) DO NOTHING;")
     .bind(snippet)
     .bind(document_id)
     .execute(db)
@@ -216,8 +217,11 @@ pub async fn add_snippet(db: &SqlitePool, snippet: &str, document: &str) -> Resu
 
 pub async fn add_document(db: &SqlitePool, document_name: &str, snippet: &str, tfidf_terms: Vec<String>, rake_phrases: Vec<String>) -> Result<()> {
   add_snippet(db, snippet, document_name).await?;
+  println!("Added snippet");
   update_tfidf_data(db, tfidf_terms, document_name).await?;
+  println!("Updated tfidf");
   update_rake_data(db, rake_phrases, document_name).await?;
+  println!("Updated rake");
 
   Ok(())
 }

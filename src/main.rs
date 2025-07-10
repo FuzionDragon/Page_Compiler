@@ -1,4 +1,4 @@
-use std::collections::{ HashSet, HashMap };
+use std::collections::{ HashMap, HashSet };
 
 use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 use stop_words::{ get, LANGUAGE };
@@ -34,7 +34,7 @@ async fn main() -> Result<()>{
 
   let db = SqlitePool::connect(&path).await.unwrap();
 
-  let snippet = "lua is a great scripting language that can be used with other programming languages like rust, it is similar in simplicty to python, however lua is more so used in embedded applications and in some cases game development";
+  let snippet = "#title\nlua is a great scripting language that can be used with other programming languages like rust, it is similar in simplicty to python, however lua is more so used in embedded applications and in some cases game development";
 
   submit_snippet(snippet, &db).await?;
 
@@ -42,10 +42,17 @@ async fn main() -> Result<()>{
 }
 
 async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
-  let checker = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='Document'")
+  let first_entry = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='Document'")
     .fetch_all(db)
     .await?
     .is_empty();
+
+  let first_line = snippet.lines().collect::<Vec<&str>>()[0];
+  let mut title: Option<&str> = None;
+  if first_line.starts_with('#') {
+    println!("Found title");
+    title = Some("test");
+  }
 
   let stop_words = get(LANGUAGE::English);
 
@@ -53,39 +60,21 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
   let input_rake_data = preprocess::rake_preprocess(snippet, stop_words.clone());
 
   // temporary name: case it is the first snippet entry into the database
-  if checker {
+  if first_entry {
     sqlite_interface::init(db).await?;
-    sqlite_interface::add_document(db, "first document", snippet, input_tfidf_data, input_rake_data).await?;
+    
+    if let Some(title) = title {
+      sqlite_interface::add_document(db, title, snippet, input_tfidf_data, input_rake_data).await?;
+    } else {
+      sqlite_interface::add_document(db, "first document", snippet, input_tfidf_data, input_rake_data).await?;
+    }
   } else {
-  // cases
-  // - if there is a heading then add snippet to a new doc (name will be random)
-  // - otherwise put it through the scoring system to find a home, or create new one
-  // - both of these will have two cases too
-  //  - if there is a document with a score that meets the threshold then store the rake data
-  //  into that doc and store the tf_idf as usual for the whole corpus linking to that doc, storing
-  //  the snippet there too.
-  //  - Otherwise, create the new document with that snippet as the first entry, corpus data will
-  //  link to that one instead.
-  //  This might be simple as they are stored in a similar way in respecive tables for the data,
-  //  with the document as a foreign key
-      
-//    let data = get_test_corpus();
-//    let corpus_tfidf_data = preprocess::corpus_tfidf_preprocess(data.clone(), stop_words.clone());
-//    let corpus_rake_data = preprocess::corpus_rake_preprocess(data, stop_words.clone());
-
     let corpus_tfidf_data = sqlite_interface::load_tfidf_data(db).await?;
     let corpus_rake_data = sqlite_interface::load_rake_data(db).await?;
 
-    // temporary name: case there is a title or the first line has the users chosen prefix in the
-    // snippet, then just create a new document
-    let check = false;
-
-    if check {
-      println!("Found title");
-      let title = "test";
-      sqlite_interface::add_snippet(db, snippet, title).await?;
-      sqlite_interface::update_tfidf_data(db,input_tfidf_data, title).await?;
-      sqlite_interface::update_rake_data(db, input_rake_data, title).await?;
+    if let Some(title) = title {
+      sqlite_interface::add_document(db, title, snippet, input_tfidf_data, input_rake_data).await?;
+      println!("Added do");
     } else {
       let scores = combined_similarity_scores(input_tfidf_data.clone(), input_rake_data.clone(), corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
 
