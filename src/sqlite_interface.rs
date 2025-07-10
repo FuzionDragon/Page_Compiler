@@ -182,14 +182,14 @@ pub async fn update_rake_data(db: &SqlitePool, phrases: Vec<String>, document: &
   Ok(())
 }
 
-pub async fn add_snippet(db: &SqlitePool, document_name: &str, snippet: &str) -> Result<()> {
+pub async fn add_snippet(db: &SqlitePool, snippet: &str, document: &str) -> Result<()> {
   sqlx::query("INSERT INTO Document (document_name) VALUES ($1)")
-    .bind(document_name)
+    .bind(document)
     .execute(db)
     .await?;
 
   let document_row = sqlx::query_as::<_, DocumentRow>("SELECT document_id, document_name FROM Document WHERE document_name = $1")
-    .bind(document_name)
+    .bind(document)
     .fetch_one(db)
     .await?;
 
@@ -205,7 +205,7 @@ pub async fn add_snippet(db: &SqlitePool, document_name: &str, snippet: &str) ->
 }
 
 pub async fn add_document(db: &SqlitePool, document_name: &str, snippet: &str, tfidf_terms: Vec<String>, rake_phrases: Vec<String>) -> Result<()> {
-  add_snippet(db, document_name, snippet).await?;
+  add_snippet(db, snippet, document_name).await?;
   update_tfidf_data(db, tfidf_terms, document_name).await?;
   update_rake_data(db, rake_phrases, document_name).await?;
 

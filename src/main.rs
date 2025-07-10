@@ -56,27 +56,47 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
     sqlite_interface::init(db).await?;
     sqlite_interface::add_document(db, "first document", snippet, input_tfidf_data, input_rake_data).await?;
   } else {
-    let data = get_test_corpus();
-
+  // cases
+  // - if there is a heading then add snippet to a new doc (name will be random)
+  // - otherwise put it through the scoring system to find a home, or create new one
+  // - both of these will have two cases too
+  //  - if there is a document with a score that meets the threshold then store the rake data
+  //  into that doc and store the tf_idf as usual for the whole corpus linking to that doc, storing
+  //  the snippet there too.
+  //  - Otherwise, create the new document with that snippet as the first entry, corpus data will
+  //  link to that one instead.
+  //  This might be simple as they are stored in a similar way in respecive tables for the data,
+  //  with the document as a foreign key
+      
+//    let data = get_test_corpus();
 //    let corpus_tfidf_data = preprocess::corpus_tfidf_preprocess(data.clone(), stop_words.clone());
 //    let corpus_rake_data = preprocess::corpus_rake_preprocess(data, stop_words.clone());
+
     let corpus_tfidf_data = sqlite_interface::load_tfidf_data(db).await?;
     let corpus_rake_data = sqlite_interface::load_rake_data(db).await?;
 
-    let scores = combined_similarity_scores(input_tfidf_data.clone(), input_rake_data.clone(), corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
+    let check = false;
 
-    for score in scores.clone() {
-      println!("{} combined_scores to input: {}", score.0, score.1);
-    }
-
-    if scores[0].1 >= THESHOLD {
-      println!("{} is the chosen document with a score of {}", scores[0].0, scores[0].1);
+    if check {
+      println!("Found title");
+      let title = "test";
+      sqlite_interface::update_tfidf_data(db,input_tfidf_data, title).await?;
+      sqlite_interface::update_rake_data(db, input_rake_data, title).await?;
+      sqlite_interface::add_snippet(db, snippet, title).await?;
     } else {
-      println!("{} doesn't meet the threshold with a score of {}", scores[0].0, scores[0].1);
-    }
+      let scores = combined_similarity_scores(input_tfidf_data.clone(), input_rake_data.clone(), corpus_tfidf_data, corpus_rake_data, COSINE_WEIGHT);
 
-    sqlite_interface::update_tfidf_data(db, input_tfidf_data, &scores[0].0).await?;
-    sqlite_interface::update_rake_data(db, input_rake_data, &scores[0].0).await?;
+      if scores[0].1 >= THESHOLD {
+        println!("{} is the chosen document with a score of {}", scores[0].0, scores[0].1);
+
+        sqlite_interface::update_tfidf_data(db, input_tfidf_data, &scores[0].0).await?;
+        sqlite_interface::update_rake_data(db, input_rake_data, &scores[0].0).await?;
+        sqlite_interface::add_snippet(db, snippet, &scores[0].0).await?;
+      } else {
+        println!("{} doesn't meet the threshold with a score of {}", scores[0].0, scores[0].1);
+        println!("Creating new document");
+      }
+    }
   }
 
   Ok(())
