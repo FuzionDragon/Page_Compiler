@@ -48,11 +48,7 @@ async fn submit_snippet(snippet: &str, db: &SqlitePool) -> Result<()> {
     .is_empty();
 
   let first_line = snippet.lines().collect::<Vec<&str>>()[0];
-  let mut title: Option<&str> = None;
-  if first_line.starts_with('#') {
-    println!("Found title");
-    title = Some("test");
-  }
+  let title: Option<&str> = first_line.strip_prefix('#');
 
   let stop_words = get(LANGUAGE::English);
 
